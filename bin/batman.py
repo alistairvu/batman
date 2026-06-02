@@ -576,7 +576,11 @@ def process_entry(entry, entries, log_level):
         child_bc = 0
         if ext in boundary_extensions:
             child_bc = entry.boundary_count + 1
-        entries[ext] = PrefixEntry(ext, depth=entry.depth + 1, boundary_count=child_bc)
+        new_entry = PrefixEntry(ext, depth=entry.depth + 1, boundary_count=child_bc)
+        new_entry.priority = _PRIORITY_FNS[PRIORITY_FUNCTION](
+            new_entry, n_tried, max_instructions
+        )
+        entries[ext] = new_entry
 
     if not entry.remaining or is_dead_end:
         del entries[entry.prefix]
