@@ -578,7 +578,7 @@ def process_entry(entry, entries, log_level):
             child_bc = entry.boundary_count + 1
         new_entry = PrefixEntry(ext, depth=entry.depth + 1, boundary_count=child_bc)
         new_entry.priority = _PRIORITY_FNS[PRIORITY_FUNCTION](
-            new_entry, n_tried, max_instructions
+            new_entry, 0, max_instructions
         )
         entries[ext] = new_entry
 
