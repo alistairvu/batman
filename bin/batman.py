@@ -18,6 +18,7 @@ DISCARD_NON_BOUNDARY_EXTENSIONS = (
     True  # if True, only enqueue extensions where binary search found a shorter suffix
 )
 ADD_PREFIXES_FROM_ACCEPTED = False  # if True, enqueue acc[:-1] for every accepted (exit-0) string found during minimisation
+MIN_MAX_DIFF = 4
 
 MY_PROGRAM = os.environ.get("PROGRAM", "./program.out").strip()
 tmp_JSON = os.environ.get("TMP_JSON", "/tmp/tmp.json").strip()
@@ -458,7 +459,7 @@ def generate(
     max_best_diff = max(best_suffixes, key=lambda x: x[1])[1]
     extensions = []
     boundary_extensions = set()
-    if max_best_diff > 0:
+    if max_best_diff > MIN_MAX_DIFF:
         for orig_suffix, accepted, best_suffix, best_diff in results:
             is_boundary = best_diff > 0 and len(best_suffix) < len(orig_suffix)
             if best_diff == max_best_diff:
@@ -476,7 +477,7 @@ def generate(
                 ext = acc[:-1]
                 extensions.append(ext)
                 boundary_extensions.add(ext)
-    is_dead_end = max_best_diff == 0 and not accepted_list
+    is_dead_end = max_best_diff <= MIN_MAX_DIFF and not accepted_list
     return (
         tried_chars,
         is_dead_end,
