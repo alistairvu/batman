@@ -14,7 +14,9 @@ BANK_PERCENTAGE = 0.5  # fraction of each inner batch drawn from SUFFIXES (the s
 IS_PARALLEL = True
 FITNESS_FUNCTION = "max_count"  # "max_count" | "max_length"
 PRIORITY_FUNCTION = "by_boundary_count"  # "by_length" | "by_extension_count" | "by_most_explored" | "by_extensions_produced" | "by_depth" | "by_boundary_count" | "by_instruction_count"
-DISCARD_NON_BOUNDARY_EXTENSIONS = True  # if True, only enqueue extensions where binary search found a shorter suffix
+DISCARD_NON_BOUNDARY_EXTENSIONS = (
+    True  # if True, only enqueue extensions where binary search found a shorter suffix
+)
 ADD_PREFIXES_FROM_ACCEPTED = False  # if True, enqueue acc[:-1] for every accepted (exit-0) string found during minimisation
 
 MY_PROGRAM = os.environ.get("PROGRAM", "./program.out").strip()
@@ -121,9 +123,9 @@ class SuffixPopulation:
     def sample(self, n: int) -> list[str]:
         return [s for s, _ in random.sample(self._pop, min(n, len(self._pop)))]
 
-    def update_fitness(self, results: list[tuple[str, int, str]]):
+    def update_fitness(self, results: list[tuple[str, list[str], str, int]]):
         # orig_suffix, accepted, best_suffix, best_diff in results:
-        scores = {s: _FITNESS_FNS[FITNESS_FUNCTION](bd, bs) for s, a, bs, bd in results}
+        scores = {s: _FITNESS_FNS[FITNESS_FUNCTION](bd, bs) for s, _, bs, bd in results}
         self._pop = [(s, scores.get(s, f)) for s, f in self._pop]
 
     def evolve(self):
@@ -265,10 +267,10 @@ def log_program_result(curr_str, rv: str, n: int, c: int, suffix_count: str) -> 
 # Binary-searches for the shortest prefix of suffix that still maximises the coverage
 # difference relative to running the program on prefix alone
 # accepted collects any complete (exit-0) strings found during the search
-# Returns (accepted, best_suffix, best_diff) where best_diff is the largest coverage delta seen
+# Returns (orig_suffix, accepted, best_suffix, best_diff) where best_diff is the largest coverage delta seen
 def minimise_suffix(
     prefix: str, suffix: str, log_level: int = 0, suffix_count: str = ""
-) -> tuple[list[str], str, int]:
+) -> tuple[str, list[str], str, int]:
     accepted = []
     best_suffix = suffix
 
@@ -394,7 +396,7 @@ def exec_args(seed_str, new_suffixes, tried_offset, priority, log_level):
             suffix,
             log_level,
             "%d| %d/%d %d/%d"
-            % (priority, i, SAMPLES_TO_TEST, tried_offset + i, len(POPULATION)),
+            % (priority, i, SAMPLES_TO_TEST, tried_offset + i, len(POPULATION or [])),
         )
         for i, suffix in enumerate(new_suffixes)
     ]
@@ -412,6 +414,9 @@ def exec_args(seed_str, new_suffixes, tried_offset, priority, log_level):
 
 
 def evolve_population(results):
+    if POPULATION is None:
+        return
+
     POPULATION.update_fitness(results)
     POPULATION.evolve()
 
@@ -427,6 +432,9 @@ def generate(
 ) -> tuple[set[str], bool, list[str], set[str], int, int]:
     print()
     print(f"generate: seed prefix {repr(seed_str)}")
+
+    if POPULATION is None:
+        return set(), False, [], set(), 0, 0
 
     new_suffixes = POPULATION.sample(SAMPLES_TO_TEST)
     tried_chars = {s[0] for s in new_suffixes}
@@ -468,7 +476,7 @@ def generate(
                 ext = acc[:-1]
                 extensions.append(ext)
                 boundary_extensions.add(ext)
-    is_dead_end = (max_best_diff == 0 and not accepted_list)
+    is_dead_end = max_best_diff == 0 and not accepted_list
     return (
         tried_chars,
         is_dead_end,
@@ -537,6 +545,7 @@ def create_valid_strings(log_level):
 
     print("All prefixes exhausted")
 
+
 # Main driver: calls generate(), updates the entry's priority via the active
 # priority function, enqueues any new extensions, and removes entries whose
 # remaining first-char set is exhausted.
@@ -561,20 +570,20 @@ def process_entry(entry, entries, log_level):
     new_extensions = [ext for ext in candidates if ext not in entries]
     entry.extension_count += len(new_extensions)
 
-    entry.priority = _PRIORITY_FNS[PRIORITY_FUNCTION](
-        entry, n_tried, max_instructions
-    )
+    entry.priority = _PRIORITY_FNS[PRIORITY_FUNCTION](entry, n_tried, max_instructions)
 
     for ext in new_extensions:
+        child_bc = 0
         if ext in boundary_extensions:
             child_bc = entry.boundary_count + 1
-        entries[ext] = PrefixEntry(
-            ext, depth=entry.depth + 1, boundary_count=child_bc
+        new_entry = PrefixEntry(ext, depth=entry.depth + 1, boundary_count=child_bc)
+        new_entry.priority = _PRIORITY_FNS[PRIORITY_FUNCTION](
+            new_entry, 0, max_instructions
         )
+        entries[ext] = new_entry
 
     if not entry.remaining or is_dead_end:
         del entries[entry.prefix]
-
 
 
 if __name__ == "__main__":
